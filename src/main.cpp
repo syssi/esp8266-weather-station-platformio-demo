@@ -55,14 +55,20 @@ const char* WIFI_PWD = "yourpassw0rd";
 // Setup
 const int UPDATE_INTERVAL_SECS = 20 * 60; // Update every 20 minutes
 
+// Temperature, humidity, pressure sensor
+const int I2C_BMP280 = 0x76;
+
+// Lux sensor
+const int I2C_TSL2561 = 0x39;
+
 // Display Settings
 const int I2C_DISPLAY_ADDRESS = 0x3c;
 #if defined(ESP8266)
-const int SDA_PIN = D3;
-const int SDC_PIN = D4;
+const int SDA_PIN = D2;
+const int SDC_PIN = D3;
 #else
-const int SDA_PIN = 5; //D3;
-const int SDC_PIN = 4; //D4;
+const int SDA_PIN = 4; //D2;
+const int SDC_PIN = 0; //D3;
 #endif
 
 
@@ -92,8 +98,8 @@ const uint8_t MAX_FORECASTS = 4;
 const boolean IS_METRIC = true;
 
 // Adjust according to your language
-const String WDAY_NAMES[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
-const String MONTH_NAMES[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+const String WDAY_NAMES[] = {"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"};
+const String MONTH_NAMES[] = {"Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"};
 
 /***************************
  * End Settings
