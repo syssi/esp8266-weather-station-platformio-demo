@@ -40,6 +40,9 @@ See more at https://thingpulse.com
 #include "WeatherStationFonts.h"
 #include "WeatherStationImages.h"
 
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
+#include <Adafruit_TSL2561_U.h>
 
 /***************************
  * Begin Settings
@@ -49,17 +52,25 @@ See more at https://thingpulse.com
 const char* WIFI_SSID = "yourssid";
 const char* WIFI_PWD = "yourpassw0rd";
 
-#define TZ              2       // (utc+) TZ in hours
-#define DST_MN          60      // use 60mn for summer time in some countries
+#define TZ              1       // (utc+) TZ in hours
+#define DST_MN          0       // use 60mn for summer time in some countries
 
 // Setup
-const int UPDATE_INTERVAL_SECS = 20 * 60; // Update every 20 minutes
+const int UPDATE_INTERVAL_SECS = 5 * 60; // Update every 5 minutes
 
 // Temperature, humidity, pressure sensor
-const int I2C_BMP280 = 0x76;
+Adafruit_BME280 bme;
+const int I2C_BMP280_ADDRESS = 0x76;
+float humidity = 0.0;
+float temperature = 0.0;
+float pressure = 0.0;
+char FormattedTemperature[10];
+char FormattedHumidity[10];
 
 // Lux sensor
-const int I2C_TSL2561 = 0x39;
+const int I2C_TSL2561_ADDRESS = 0x39;
+Adafruit_TSL2561_Unified tsl = Adafruit_TSL2561_Unified(I2C_TSL2561_ADDRESS, 12345);
+int lux = 0;
 
 // Display Settings
 const int I2C_DISPLAY_ADDRESS = 0x3c;
@@ -82,7 +93,7 @@ result set and select the entry closest to the actual location you want to displ
 data for. It'll be a URL like https://openweathermap.org/city/2657896. The number
 at the end is what you assign to the constant below.
  */
-String OPEN_WEATHER_MAP_LOCATION_ID = "2657896";
+String OPEN_WEATHER_MAP_LOCATION_ID = "2847666";
 
 // Pick a language code from this list:
 // Arabic - ar, Bulgarian - bg, Catalan - ca, Czech - cz, German - de, Greek - el,
@@ -135,14 +146,17 @@ void drawCurrentWeather(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t
 void drawForecast(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void drawForecastDetails(OLEDDisplay *display, int x, int y, int dayIndex);
 void drawHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state);
+void drawTemperature(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
+void drawLux(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void setReadyForWeatherUpdate();
-
+void updateTemperature();
+void updateLux();
 
 // Add frames
 // this array keeps function pointers to all frames
 // frames are the single views that slide from right to left
-FrameCallback frames[] = { drawDateTime, drawCurrentWeather, drawForecast };
-int numberOfFrames = 3;
+FrameCallback frames[] = { drawDateTime, drawCurrentWeather, drawForecast, drawTemperature, drawLux };
+int numberOfFrames = 5;
 
 OverlayCallback overlays[] = { drawHeaderOverlay };
 int numberOfOverlays = 1;
@@ -205,6 +219,19 @@ void setup() {
 
   Serial.println("");
 
+  // Setup tsl2561
+  if(!tsl.begin()) {
+    /* There was a problem detecting the TSL2561 ... check your connections */
+    Serial.print("Ooops, no TSL2561 detected ... Check your wiring or I2C ADDR!");
+    while(1);
+  }
+  tsl.enableAutoRange(true);
+  tsl.setIntegrationTime(TSL2561_INTEGRATIONTIME_13MS);
+
+  if (!bme.begin(I2C_BMP280_ADDRESS)) {
+    Serial.println("Could not find a valid BME280 sensor, check wiring!");
+  }
+
   updateData(&display);
 
 }
@@ -254,12 +281,28 @@ void updateData(OLEDDisplay *display) {
   forecastClient.setAllowedHours(allowedHours, sizeof(allowedHours));
   forecastClient.updateForecastsById(forecasts, OPEN_WEATHER_MAP_APP_ID, OPEN_WEATHER_MAP_LOCATION_ID, MAX_FORECASTS);
 
+  updateLux();
+  updateTemperature();
+
   readyForWeatherUpdate = false;
   drawProgress(display, 100, "Done...");
   delay(1000);
 }
 
+void updateLux() {
+  sensors_event_t event;
+  tsl.getEvent(&event);
 
+  if (event.light) {
+    lux = event.light;
+  }
+}
+
+void updateTemperature() {
+  temperature = bme.readTemperature();
+  humidity = bme.readHumidity();
+//  pressure = bme.readPressure();
+}
 
 void drawDateTime(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
   now = time(nullptr);
@@ -334,6 +377,26 @@ void drawHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state) {
   String temp = String(currentWeather.temp, 1) + (IS_METRIC ? "°C" : "°F");
   display->drawString(128, 54, temp);
   display->drawHorizontalLine(0, 52, 128);
+}
+
+void drawTemperature(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
+  display->setTextAlignment(TEXT_ALIGN_CENTER);
+  display->setFont(ArialMT_Plain_10);
+  display->drawString(64 + x, 0, "Umgebung" );
+  display->setFont(ArialMT_Plain_16);
+  dtostrf(temperature,4, 1, FormattedTemperature);
+  display->drawString(64 + x, 12, String(FormattedTemperature) + (IS_METRIC ? "°C": "°F"));
+  dtostrf(humidity,4, 1, FormattedHumidity);
+  display->drawString(64 + x, 30, String(FormattedHumidity) + "%");
+}
+
+void drawLux(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
+  display->setTextAlignment(TEXT_ALIGN_CENTER);
+  display->setFont(ArialMT_Plain_10);
+  display->drawString(64 + x, 5, "Helligkeit" );
+
+  display->setFont(ArialMT_Plain_24);
+  display->drawString(64 + x, 15, String(lux) + "lx");
 }
 
 void setReadyForWeatherUpdate() {
